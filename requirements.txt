@@ -1,0 +1,8 @@
+requests==2.31.0 # HTTP calls to APIs
+pandas==2.1.4 # Data manipulation during light transformation
+SQLAlchemy # ORM / DB connection abstraction
+psycopg2-binary==2.9.9 # PostgreSQL driver (used under SQLAlchemy or directly)
+python-dotenv==1.0.0 # Loads secrets from .env instead of hardcoding
+apache-airflow==2.8.1 # Orchestration
+dbt-postgres==1.7.4 # dbt adapter for Postgres
+tenacity==8.2.3  # Retry logic with backoff
