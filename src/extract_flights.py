@@ -20,7 +20,12 @@ DB_URI = (
 
 TABLE_NAME = "flights"
 
-def fetch_flights_data(date):
+def fetch_flights_data(date: datetime) -> dict:
+    api_key = os.getenv("AVIATIONSTACK_API_KEY")
+
+    if not api_key:
+        raise ValueError("Missing API key")
+    
     params = {
         "access_key": os.getenv("AVIATIONSTACK_API_KEY"),
         "date": date.strftime("%Y-%m-%d"),
@@ -28,15 +33,9 @@ def fetch_flights_data(date):
     }
 
     response = requests.get(API_URL, params=params)
-    data = response.json()
+    response.raise_for_status()
 
-    return data
+    return response.json()
 
-today = datetime.now()
-
-raw_data = fetch_flights_data(today)
-
-print(type(raw_data))
-print(raw_data.keys())
 
 
