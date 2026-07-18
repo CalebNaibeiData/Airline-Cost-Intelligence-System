@@ -1,7 +1,7 @@
 from datetime import datetime
-from src.extract_flights import fetch_flights_data
+from src.extract.extract_flights import fetch_flights_data
 from src.transform import flatten_flight_json, clean_flights
-from src.load import load
+from src.load.load import load
 
 
 def run_pipeline():
