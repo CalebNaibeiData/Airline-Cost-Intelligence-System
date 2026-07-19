@@ -9,16 +9,16 @@ def run_pipeline():
 
     # Extract
     raw_data = fetch_flights_data(today)
-    print("✅ Extract done")
+    print("Extract done")
 
     # Transform
     df = flatten_flight_json(raw_data)
     df = clean_flights(df)
-    print(f"✅ Transform done: {len(df)} rows")
+    print(f"Transform done: {len(df)} rows")
 
     # Load
     load(df)
-    print("✅ Load done")
+    print("Load done")
 
 
 if __name__ == "__main__":
