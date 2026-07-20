@@ -14,6 +14,9 @@ from src.load.load import load
 from src.transform import clean_flights, flatten_flight_json
 
 
+# -----------------------
+# ENV SETUP
+# -----------------------
 load_dotenv()
 
 DB_URI = (
@@ -28,20 +31,28 @@ AVIATION_API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
 FUEL_API_KEY = os.getenv("FUEL_API_KEY")
 
 if not AVIATION_API_KEY:
-    raise ValueError("Missing AVIATIONSTACK_API_KEY in .env")
+    raise ValueError("Missing AVIATIONSTACK_API_KEY")
+
 
 FLIGHT_API_URL = "http://api.aviationstack.com/v1/flights"
 FUEL_API_URL = "https://api.oilpriceapi.com/v1/prices/latest"
 
-BASE_DIR = Path("data/raw")
-(BASE_DIR / "flights").mkdir(parents=True, exist_ok=True)
-(BASE_DIR / "fuel").mkdir(parents=True, exist_ok=True)
 
+# -----------------------
+# PATHS
+# -----------------------
+BASE_DIR = Path("data/raw")
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
+
+(BASE_DIR / "flights").mkdir(parents=True, exist_ok=True)
+(BASE_DIR / "fuel").mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# -----------------------
+# HELPERS
+# -----------------------
 def fetch_with_retry(url, params=None, headers=None, retries=3):
     for attempt in range(retries):
         try:
@@ -66,29 +77,6 @@ def save_json(data, folder, prefix):
     return str(file_path)
 
 
-def extract_flights():
-    print("Fetching flights data...")
-
-    params = {"access_key": AVIATION_API_KEY, "limit": 100}
-    data = fetch_with_retry(FLIGHT_API_URL, params=params)
-    return save_json(data, "flights", "flights")
-
-
-def extract_fuel():
-    print("Fetching fuel data...")
-
-    headers = {"Authorization": f"Token {FUEL_API_KEY}"}
-    params = {"by_code": "BRENT_CRUDE_USD"}
-    data = fetch_with_retry(FUEL_API_URL, params=params, headers=headers)
-    return save_json(data, "fuel", "fuel")
-
-
-def run_extract():
-    flights_file = extract_flights()
-    fuel_file = extract_fuel()
-    return {"flights": flights_file, "fuel": fuel_file}
-
-
 def get_latest_file(folder):
     base_path = RAW_DIR / folder
     files = list(base_path.glob("*.json"))
@@ -104,6 +92,33 @@ def load_json(file_path):
         return json.load(handle)
 
 
+# -----------------------
+# EXTRACT
+# -----------------------
+def extract_flights():
+    print("Fetching flights data...")
+    params = {"access_key": AVIATION_API_KEY, "limit": 100}
+    data = fetch_with_retry(FLIGHT_API_URL, params=params)
+    return save_json(data, "flights", "flights")
+
+
+def extract_fuel():
+    print("Fetching fuel data...")
+    headers = {"Authorization": f"Token {FUEL_API_KEY}"}
+    params = {"by_code": "BRENT_CRUDE_USD"}
+    data = fetch_with_retry(FUEL_API_URL, params=params, headers=headers)
+    return save_json(data, "fuel", "fuel")
+
+
+def run_extract():
+    flights_file = extract_flights()
+    fuel_file = extract_fuel()
+    return {"flights": flights_file, "fuel": fuel_file}
+
+
+# -----------------------
+# TRANSFORM
+# -----------------------
 def clean_fuel(data):
     prices = data.get("data", {})
     df = pd.DataFrame([prices])
@@ -139,48 +154,49 @@ def run_transform(files_dict=None):
 
     flights_df = clean_flights(flights_raw)
     fuel_df = clean_fuel(fuel_raw)
+
     final_df = join_data(flights_df, fuel_df)
 
     print("Final rows:", len(final_df))
-    if not final_df.empty:
-        print(final_df.head())
-
     return final_df
 
 
+# -----------------------
+# LOAD (OPTIONAL HELPER)
+# -----------------------
+def load_to_postgres(csv_path=None):
+    engine = create_engine(DB_URI)
+
+    if csv_path:
+        df = pd.read_csv(csv_path)
+    else:
+        files = list(PROCESSED_DIR.glob("*.csv"))
+
+        if not files:
+            raise FileNotFoundError("No processed CSV files found")
+
+        latest_file = max(files, key=lambda x: x.stat().st_mtime)
+        df = pd.read_csv(latest_file)
+
+    df.to_sql(
+        "airline_data",
+        engine,
+        if_exists="append",
+        index=False,
+    )
+
+    engine.dispose()
+    print("Data loaded to PostgreSQL")
+
+
+# -----------------------
+# OPTIONAL LOCAL TEST
+# -----------------------
 if __name__ == "__main__":
     files = run_extract()
-    print("Done:", files)
+    df = run_transform(files)
 
-
-engine = create_engine(DB_URI)
-
-file = max(Path("data/processed").glob("*.csv"), key=lambda x: x.stat().st_mtime)
-df = pd.read_csv(file)
-
-df.to_sql(
-    "airline_data",
-    engine,
-    if_exists="append",
-    index=False,
-)
-
-print("Data loaded to PostgreSQL")
-
-
-def run_pipeline():
-    today = datetime.now()
-
-    raw_data = fetch_flights_data(today)
-    print("Extract done")
-
-    df = flatten_flight_json(raw_data)
-    df = clean_flights(df)
-    print(f"Transform done: {len(df)} rows")
-
-    load(df)
-    print("Load done")
-
-
-if __name__ == "__main__":
-    run_pipeline()
+    if not df.empty:
+        out = PROCESSED_DIR / "test_output.csv"
+        df.to_csv(out, index=False)
+        load_to_postgres(out)s
